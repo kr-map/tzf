@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Alfex4936/tzf/convert"
+	"github.com/kr-map/tzf/convert"
 	"google.golang.org/protobuf/proto"
 )
 

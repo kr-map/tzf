@@ -9,8 +9,8 @@ import (
 	_ "embed"
 	"fmt"
 
-	"github.com/Alfex4936/tzf"
-	"github.com/Alfex4936/tzf/pb"
+	"github.com/kr-map/tzf"
+	"github.com/kr-map/tzf/pb"
 	"google.golang.org/protobuf/proto"
 )
 

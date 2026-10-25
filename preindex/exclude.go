@@ -30,7 +30,7 @@ func init() {
 // Preindex works for most places, except too small regions that current smallest
 // tile couldn't detect.
 //
-// https://github.com/Alfex4936/tzf/issues/76
+// https://github.com/kr-map/tzf/issues/76
 func excludePreIndex(lng float64, lat float64) bool {
 	_, err := excludesFinder.FindOne(lng, lat)
 	return err == nil

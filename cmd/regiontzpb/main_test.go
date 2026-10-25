@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/Alfex4936/tzf/korea"
+	"github.com/kr-map/tzf/korea"
 	tzfv2 "github.com/ringsaturn/tzf/v2"
 )
 

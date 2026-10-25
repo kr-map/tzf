@@ -1,7 +1,7 @@
 package convert
 
 import (
-	"github.com/Alfex4936/tzf/pb"
+	"github.com/kr-map/tzf/pb"
 	"github.com/tidwall/geojson/geometry"
 )
 

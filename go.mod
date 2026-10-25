@@ -1,4 +1,4 @@
-module github.com/Alfex4936/tzf
+module github.com/kr-map/tzf
 
 go 1.24
 

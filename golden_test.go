@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Alfex4936/tzf"
+	"github.com/kr-map/tzf"
 	gocitiesjson "github.com/ringsaturn/go-cities.json"
 )
 

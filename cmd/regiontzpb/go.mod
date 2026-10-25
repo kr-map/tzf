@@ -1,11 +1,11 @@
-module github.com/Alfex4936/tzf/cmd/regiontzpb
+module github.com/kr-map/tzf/cmd/regiontzpb
 
 go 1.26.0
 
-replace github.com/Alfex4936/tzf => ../..
+replace github.com/kr-map/tzf => ../..
 
 require (
-	github.com/Alfex4936/tzf v0.0.0-00010101000000-000000000000
+	github.com/kr-map/tzf v0.0.0-00010101000000-000000000000
 	github.com/paulmach/orb v0.13.0
 	github.com/ringsaturn/tzf/v2 v2.1.3
 	google.golang.org/protobuf v1.36.12

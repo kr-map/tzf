@@ -5,8 +5,8 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/Alfex4936/tzf"
-	"github.com/Alfex4936/tzf/pb"
+	"github.com/kr-map/tzf"
+	"github.com/kr-map/tzf/pb"
 	tzfrellite "github.com/ringsaturn/tzf-rel-lite"
 	"google.golang.org/protobuf/proto"
 )

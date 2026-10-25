@@ -1,7 +1,7 @@
-# TZF: a fast timezone finder for Go. [![Go Reference](https://pkg.go.dev/badge/github.com/Alfex4936/tzf.svg)](https://pkg.go.dev/github.com/Alfex4936/tzf) [![codecov](https://codecov.io/gh/Alfex4936/tzf/branch/main/graph/badge.svg?token=9KIU85IERM)](https://codecov.io/gh/Alfex4936/tzf)
+# TZF: a fast timezone finder for Go. [![Go Reference](https://pkg.go.dev/badge/github.com/kr-map/tzf.svg)](https://pkg.go.dev/github.com/kr-map/tzf) [![codecov](https://codecov.io/gh/kr-map/tzf/branch/main/graph/badge.svg?token=9KIU85IERM)](https://codecov.io/gh/kr-map/tzf)
 
-![no_gc](https://github.com/Alfex4936/tzf/assets/2356749/ef5707b8-5639-4128-b7c9-c8658d82b9f3)
-![gc](https://github.com/Alfex4936/tzf/assets/2356749/1af8374a-d0a8-4f32-b99f-4d2a0ce6cbd2)
+![no_gc](https://github.com/kr-map/tzf/assets/2356749/ef5707b8-5639-4128-b7c9-c8658d82b9f3)
+![gc](https://github.com/kr-map/tzf/assets/2356749/1af8374a-d0a8-4f32-b99f-4d2a0ce6cbd2)
 
 TZF is a fast timezone finder package designed for Go. It allows you to quickly
 find the timezone for a given latitude and longitude, making it ideal for geo
@@ -18,7 +18,7 @@ toolkit.
 
 | Language or Sever | Link                                                                    | Note              |
 | ----------------- | ----------------------------------------------------------------------- | ----------------- |
-| Go                | [`Alfex4936/tzf`](https://github.com/Alfex4936/tzf)                     |                   |
+| Go                | [`kr-map/tzf`](https://github.com/kr-map/tzf)                     |                   |
 | Ruby              | [`HarlemSquirrel/tzf-rb`](https://github.com/HarlemSquirrel/tzf-rb)     |                   |
 | Rust              | [`ringsaturn/tzf-rs`](https://github.com/ringsaturn/tzf-rs)             |                   |
 | Python            | [`ringsaturn/tzfpy`](https://github.com/ringsaturn/tzfpy)               |                   |
@@ -32,7 +32,7 @@ toolkit.
 To start using TZF in your Go project, you first need to install the package:
 
 ```bash
-go get github.com/Alfex4936/tzf
+go get github.com/kr-map/tzf
 ```
 
 Then, you can use the following code to locate:
@@ -44,7 +44,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/Alfex4936/tzf"
+	"github.com/kr-map/tzf"
 )
 
 func main() {
@@ -66,9 +66,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/Alfex4936/tzf"
+	"github.com/kr-map/tzf"
 	tzfrel "github.com/ringsaturn/tzf-rel"
-	"github.com/Alfex4936/tzf/pb"
+	"github.com/kr-map/tzf/pb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -97,7 +97,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/Alfex4936/tzf"
+	"github.com/kr-map/tzf"
 )
 
 var f tzf.F
@@ -145,7 +145,7 @@ of coordinates. To use the CLI tool, you first need to install it using the
 following command:
 
 ```bash
-go install github.com/Alfex4936/tzf/cmd/tzf@latest
+go install github.com/kr-map/tzf/cmd/tzf@latest
 ```
 
 Once installed, you can use the tzf command followed by the latitude and

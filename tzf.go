@@ -11,9 +11,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Alfex4936/tzf/convert"
-	"github.com/Alfex4936/tzf/pb"
-	"github.com/Alfex4936/tzf/reduce"
+	"github.com/kr-map/tzf/convert"
+	"github.com/kr-map/tzf/pb"
+	"github.com/kr-map/tzf/reduce"
 	"github.com/tidwall/geojson/geometry"
 	"github.com/tidwall/rtree"
 	"github.com/twpayne/go-polyline"
@@ -28,7 +28,7 @@ type Option struct {
 
 type OptionFunc = func(opt *Option)
 
-// SetDropPBTZ will make Finder not save [github.com/Alfex4936/tzf/pb.Timezone] in memory
+// SetDropPBTZ will make Finder not save [github.com/kr-map/tzf/pb.Timezone] in memory
 func SetDropPBTZ(opt *Option) {
 	opt.DropPBTZ = true
 }

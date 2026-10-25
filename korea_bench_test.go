@@ -4,8 +4,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/Alfex4936/tzf"
-	"github.com/Alfex4936/tzf/korea"
+	"github.com/kr-map/tzf"
+	"github.com/kr-map/tzf/korea"
 )
 
 // Points the k-pullup API asks about: Korean land, islands, coastal sea, and neighbors.

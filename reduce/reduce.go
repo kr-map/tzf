@@ -4,7 +4,7 @@ package reduce
 import (
 	"sync"
 
-	"github.com/Alfex4936/tzf/pb"
+	"github.com/kr-map/tzf/pb"
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/simplify"
 )

@@ -5,8 +5,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/Alfex4936/tzf"
-	"github.com/Alfex4936/tzf/pb"
+	"github.com/kr-map/tzf"
+	"github.com/kr-map/tzf/pb"
 	"github.com/loov/hrtime/hrtesting"
 	gocitiesjson "github.com/ringsaturn/go-cities.json"
 	tzfrellite "github.com/ringsaturn/tzf-rel-lite"

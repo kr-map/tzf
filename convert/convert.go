@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Alfex4936/tzf/pb"
+	"github.com/kr-map/tzf/pb"
 	"github.com/mitchellh/mapstructure"
 )
 

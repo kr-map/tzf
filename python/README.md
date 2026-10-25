@@ -1,1 +1,1 @@
-Move to <https://github.com/Alfex4936/tzfpy>
+Move to <https://github.com/kr-map/tzfpy>

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package pb;
 
-option go_package = "github.com/Alfex4936/tzf/pb;pb";
+option go_package = "github.com/kr-map/tzf/pb;pb";
 
 // Basic Point data define.
 message Point {
