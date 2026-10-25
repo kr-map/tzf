@@ -1,6 +1,7 @@
 package tzf
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"sync"
@@ -20,32 +21,19 @@ type DefaultFinder struct {
 
 func NewDefaultFinder() (F, error) {
 	var (
-		fuzzyFinder F
-		finder      F
-		err         error
+		fuzzyFinder, finder F
+		fuzzyErr            error
+		wg                  sync.WaitGroup
 	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	// Initiate both finder setups concurrently to improve setup time
-	ch := make(chan error, 2)
-
-	go func() {
-		fuzzyFinder, err = initFuzzyFinder(tzfrellite.PreindexData)
-		ch <- err
+	wg.Add(1)
+	go func() { // the two decodes are independent; run them side by side
+		defer wg.Done()
+		fuzzyFinder, fuzzyErr = initFuzzyFinder(tzfrellite.PreindexData)
 	}()
-
-	go func() {
-		finder, err = initCompressedFinder(tzfrellite.LiteCompressData)
-		ch <- err
-	}()
-
-	// Wait for both goroutines to complete
-	err1, err2 := <-ch, <-ch
-	if err1 != nil || err2 != nil {
-		return nil, fmt.Errorf("failed to initialize finders: %v, %v", err1, err2)
+	finder, err := initCompressedFinder(tzfrellite.LiteCompressData)
+	wg.Wait()
+	if err := errors.Join(fuzzyErr, err); err != nil {
+		return nil, fmt.Errorf("tzf: init finders: %w", err)
 	}
 
 	if finder.DataVersion() != fuzzyFinder.DataVersion() {
@@ -56,15 +44,10 @@ func NewDefaultFinder() (F, error) {
 		)
 	}
 
-	f := &DefaultFinder{
-		fuzzyFinder: fuzzyFinder,
-		finder:      finder,
-	}
-
 	// Force free mem by probuf, about 50~80MB
 	runtime.GC()
 
-	return f, nil
+	return &DefaultFinder{fuzzyFinder: fuzzyFinder, finder: finder}, nil
 }
 
 // initFuzzyFinder initializes a fuzzy finder from preindex data
@@ -85,40 +68,26 @@ func initCompressedFinder(data []byte) (F, error) {
 	return NewFinderFromCompressed(input, SetDropPBTZ)
 }
 
-// Optimized GetTimezoneName considers initial direct lookups before falling back to concurrent offset checks
+// probeOffsets are tried in order when no zone contains the point itself (gaps left by simplified borders).
+var probeOffsets = [...][2]float64{{-0.02, -0.02}, {-0.02, 0.02}, {0.02, -0.02}, {0.02, 0.02}}
+
 func (f *DefaultFinder) GetTimezoneName(lng float64, lat float64) string {
-	// Immediate checks without offsets
+	if name := f.nameAt(lng, lat); name != "" {
+		return name
+	}
+	for _, d := range probeOffsets {
+		if name := f.nameAt(lng+d[0], lat+d[1]); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+func (f *DefaultFinder) nameAt(lng, lat float64) string {
 	if name := f.fuzzyFinder.GetTimezoneName(lng, lat); name != "" {
 		return name
 	}
-	if name := f.finder.GetTimezoneName(lng, lat); name != "" {
-		return name
-	}
-
-	// Use concurrency for offset checks only if immediate lookups fail
-	offsets := []float64{-0.02, 0.02}
-	var result string
-	var once sync.Once
-
-	var wg sync.WaitGroup
-	for _, dx := range offsets {
-		for _, dy := range offsets {
-			wg.Add(1)
-			go func(dx, dy float64) {
-				defer wg.Done()
-				// Offsets applied
-				offsetLng, offsetLat := lng+dx, lat+dy
-				if name := f.fuzzyFinder.GetTimezoneName(offsetLng, offsetLat); name != "" {
-					once.Do(func() { result = name })
-				} else if name := f.finder.GetTimezoneName(offsetLng, offsetLat); name != "" {
-					once.Do(func() { result = name })
-				}
-			}(dx, dy)
-		}
-	}
-	wg.Wait()
-
-	return result
+	return f.finder.GetTimezoneName(lng, lat)
 }
 
 func (f *DefaultFinder) GetTimezoneNames(lng float64, lat float64) ([]string, error) {

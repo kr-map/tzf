@@ -136,17 +136,16 @@ func EnsureInside(geopolys []*geometry.Poly, tiles []maptile.Tile) []maptile.Til
 		}
 		tilePoly := geometry.NewPoly(geometryPoints, nil, nil)
 
+		inside := false // the old loop's continues were no-ops, so every tile passed
 		for _, geopoly := range geopolys {
-			if !geopoly.ContainsPoly(tilePoly) {
-				continue
-			}
-			for _, point := range geometryPoints {
-				if !geopoly.ContainsPoint(point) {
-					continue
-				}
+			if geopoly.ContainsPoly(tilePoly) {
+				inside = true
+				break
 			}
 		}
-		insideTZTiles = append(insideTZTiles, tile)
+		if inside {
+			insideTZTiles = append(insideTZTiles, tile)
+		}
 	}
 	return insideTZTiles
 }

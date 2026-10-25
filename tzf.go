@@ -7,14 +7,16 @@ package tzf
 import (
 	"errors"
 	"fmt"
-	"math"
+	"runtime"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Alfex4936/tzf/convert"
 	"github.com/Alfex4936/tzf/pb"
 	"github.com/Alfex4936/tzf/reduce"
 	"github.com/tidwall/geojson/geometry"
 	"github.com/tidwall/rtree"
+	"github.com/twpayne/go-polyline"
 	"golang.org/x/exp/slices"
 )
 
@@ -32,6 +34,7 @@ func SetDropPBTZ(opt *Option) {
 }
 
 type tzitem struct {
+	idx   int // position in the input; overlapping zones resolve to the lowest
 	pbtz  *pb.Timezone
 	name  string
 	polys []*geometry.Poly
@@ -49,67 +52,12 @@ func (i *tzitem) ContainsPoint(p geometry.Point) bool {
 		return false
 	}
 
-	// Use concurrency only for a significant number of polygons
-	if len(i.polys) > 10 {
-		return i.containsPointConcurrent(p)
-	}
-
-	// Sequential check for small number of polygons
 	for _, poly := range i.polys {
 		if poly.ContainsPoint(p) {
 			return true
 		}
 	}
 	return false
-}
-
-func (i *tzitem) containsPointConcurrent(p geometry.Point) bool {
-	batchSize := len(i.polys) / 4
-	if batchSize < 10 {
-		batchSize = 10
-	}
-
-	var wg sync.WaitGroup
-	found := make(chan bool, 1) // Buffer to prevent blocking
-	done := make(chan struct{}) // Signal to stop other goroutines
-
-	// Creating batches of polygons to process concurrently
-	for start := 0; start < len(i.polys); start += batchSize {
-		wg.Add(1)
-		end := start + batchSize
-		if end > len(i.polys) {
-			end = len(i.polys)
-		}
-
-		go func(polys []*geometry.Poly) {
-			defer wg.Done()
-			for _, poly := range polys {
-				select {
-				case <-done:
-					return
-				default:
-					if poly.ContainsPoint(p) {
-						select {
-						case found <- true:
-							close(done)
-							return
-						default:
-							return
-						}
-					}
-				}
-			}
-		}(i.polys[start:end])
-	}
-
-	go func() {
-		wg.Wait()
-		close(found) // Ensure found channel is closed after all goroutines are done
-	}()
-
-	// Return true if found channel receives data, else false
-	_, ok := <-found
-	return ok
 }
 
 func (i *tzitem) getMinMax() ([2]float64, [2]float64) {
@@ -167,199 +115,171 @@ func NewFinderFromRawJSON(input *convert.BoundaryFile, opts ...OptionFunc) (F, e
 }
 
 func NewFinderFromPB(input *pb.Timezones, opts ...OptionFunc) (F, error) {
-	items := make([]*tzitem, 0)
-	names := make([]string, 0)
+	opt := newOption(opts)
+	return build(input.Version, input.Reduced, opt, len(input.Timezones), func(i int) (*tzitem, error) {
+		tz := input.Timezones[i]
+		item := &tzitem{name: tz.Name}
+		if !opt.DropPBTZ {
+			item.pbtz = tz
+		}
+		for _, polygon := range tz.Polygons {
+			holes := make([][]geometry.Point, len(polygon.Holes))
+			for h, hole := range polygon.Holes {
+				holes[h] = pbPoints(hole.Points)
+			}
+			item.polys = append(item.polys, newPoly(pbPoints(polygon.Points), holes))
+		}
+		return item, nil
+	})
+}
 
+// NewFinderFromCompressed decodes the polylines straight into polygon points; with
+// [SetDropPBTZ] it never materializes the intermediate [pb.Timezones].
+func NewFinderFromCompressed(input *pb.CompressedTimezones, opts ...OptionFunc) (F, error) {
+	opt := newOption(opts)
+	if !opt.DropPBTZ || input.Method != pb.CompressMethod_Polyline {
+		tzs, err := reduce.Decompress(input)
+		if err != nil {
+			return nil, err
+		}
+		return NewFinderFromPB(tzs, opts...)
+	}
+	return build(input.Version, false, opt, len(input.Timezones), func(i int) (*tzitem, error) {
+		tz := input.Timezones[i]
+		item := &tzitem{name: tz.Name}
+		for _, polygon := range tz.Data {
+			exterior, err := polylinePoints(polygon.Points)
+			if err != nil {
+				return nil, fmt.Errorf("tzf: %s: %w", tz.Name, err)
+			}
+			holes := make([][]geometry.Point, len(polygon.Holes))
+			for h, hole := range polygon.Holes {
+				if holes[h], err = polylinePoints(hole.Points); err != nil {
+					return nil, fmt.Errorf("tzf: %s: %w", tz.Name, err)
+				}
+			}
+			item.polys = append(item.polys, newPoly(exterior, holes))
+		}
+		return item, nil
+	})
+}
+
+func newOption(opts []OptionFunc) *Option {
 	opt := &Option{}
 	for _, optFunc := range opts {
 		optFunc(opt)
 	}
-
-	tr := &rtree.RTreeG[*tzitem]{}
-	for _, timezone := range input.Timezones {
-		names = append(names, timezone.Name)
-
-		newItem := &tzitem{
-			name: timezone.Name,
-		}
-		if !opt.DropPBTZ {
-			newItem.pbtz = timezone
-		}
-		for _, polygon := range timezone.Polygons {
-
-			newPoints := make([]geometry.Point, 0)
-			for _, point := range polygon.Points {
-				newPoints = append(newPoints, geometry.Point{
-					X: float64(point.Lng),
-					Y: float64(point.Lat),
-				})
-			}
-
-			holes := [][]geometry.Point{}
-			for _, holePoly := range polygon.Holes {
-				newHolePoints := make([]geometry.Point, 0)
-				for _, point := range holePoly.Points {
-					newHolePoints = append(newHolePoints, geometry.Point{
-						X: float64(point.Lng),
-						Y: float64(point.Lat),
-					})
-				}
-				holes = append(holes, newHolePoints)
-			}
-
-			newPoly := geometry.NewPoly(newPoints, holes, &geometry.IndexOptions{Kind: geometry.RTree, MinPoints: 64})
-			newItem.polys = append(newItem.polys, newPoly)
-		}
-		minp, maxp := newItem.getMinMax()
-
-		newItem.min = minp
-		newItem.max = maxp
-
-		items = append(items, newItem)
-		tr.Insert(minp, maxp, newItem)
-	}
-	finder := &Finder{}
-	finder.items = items
-	finder.names = names
-	finder.reduced = input.Reduced
-	finder.tr = tr
-	finder.opt = opt
-	finder.version = input.Version
-	return finder, nil
+	return opt
 }
 
-func NewFinderFromCompressed(input *pb.CompressedTimezones, opts ...OptionFunc) (F, error) {
-	tzs, err := reduce.Decompress(input)
-	if err != nil {
+func newPoly(exterior []geometry.Point, holes [][]geometry.Point) *geometry.Poly {
+	return geometry.NewPoly(exterior, holes, &geometry.IndexOptions{Kind: geometry.RTree, MinPoints: 64})
+}
+
+func pbPoints(points []*pb.Point) []geometry.Point {
+	out := make([]geometry.Point, len(points))
+	for i, p := range points {
+		out[i] = geometry.Point{X: float64(p.Lng), Y: float64(p.Lat)}
+	}
+	return out
+}
+
+// polylinePoints matches reduce.DecompressedPolylineBytesToPoints bit for bit: a float running sum
+// (as polyline.DecodeCoords does) rounded through float32 (as pb.Point stores it).
+func polylinePoints(buf []byte) ([]geometry.Point, error) {
+	out := make([]geometry.Point, 0, len(buf)/4)
+	var lng, lat float64
+	for len(buf) > 0 {
+		dx, rest, err := polyline.DecodeInt(buf)
+		if err != nil {
+			return nil, err
+		}
+		dy, rest, err := polyline.DecodeInt(rest)
+		if err != nil {
+			return nil, err
+		}
+		buf = rest
+		lng += float64(dx) / 1e5
+		lat += float64(dy) / 1e5
+		out = append(out, geometry.Point{X: float64(float32(lng)), Y: float64(float32(lat))})
+	}
+	return out, nil
+}
+
+// build makes the zones in parallel (polygon indexing dominates load time), then indexes them in input order.
+func build(version string, reduced bool, opt *Option, n int, zone func(i int) (*tzitem, error)) (F, error) {
+	items := make([]*tzitem, n)
+	errs := make([]error, n)
+	next := atomic.Int64{}
+	var wg sync.WaitGroup
+	for range min(runtime.GOMAXPROCS(0), max(n, 1)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := int(next.Add(1) - 1); i < n; i = int(next.Add(1) - 1) {
+				items[i], errs[i] = zone(i)
+			}
+		}()
+	}
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
-	return NewFinderFromPB(tzs, opts...)
-}
 
-func getRTreeRangeShifted(lng float64, lat float64) float64 {
-	if 73 < lng && lng < 140 && 8 < lat && lat < 54 {
-		return 70.0
+	f := &Finder{items: items, names: make([]string, n), reduced: reduced, tr: &rtree.RTreeG[*tzitem]{}, opt: opt, version: version}
+	for i, item := range items {
+		item.idx = i
+		f.names[i] = item.name
+		if len(item.polys) == 0 {
+			continue // nothing to find; keep the name
+		}
+		item.min, item.max = item.getMinMax()
+		f.tr.Insert(item.min, item.max, item)
 	}
-	return 30.0
+	return f, nil
 }
 
-func (f *Finder) getItemInRanges(lng float64, lat float64) []*tzitem {
-	candidates := []*tzitem{}
-
-	// Adjust the range based on more nuanced logic or additional conditions
-	shifted := getRTreeRangeShifted(lng, lat)
-
-	// Calculate bounds and ensure they're within valid geographic ranges
-	minLng := math.Max(lng-shifted, -180)
-	maxLng := math.Min(lng+shifted, 180)
-	minLat := math.Max(lat-shifted, -90)
-	maxLat := math.Min(lat+shifted, 90)
-
-	f.tr.Search([2]float64{minLng, minLat}, [2]float64{maxLng, maxLat}, func(min, max [2]float64, data *tzitem) bool {
-		candidates = append(candidates, data)
-		return true // Continue searching
+// lookup returns the first zone in input order that contains the point, or nil.
+func (f *Finder) lookup(p geometry.Point) *tzitem {
+	var best *tzitem
+	f.tr.Search([2]float64{p.X, p.Y}, [2]float64{p.X, p.Y}, func(_, _ [2]float64, item *tzitem) bool {
+		if (best == nil || item.idx < best.idx) && item.ContainsPoint(p) {
+			best = item
+		}
+		return true
 	})
-
-	// Fallback to all items if no candidates found within the adjusted range
-	if len(candidates) == 0 {
-		candidates = f.items
-	}
-
-	return candidates
+	return best
 }
 
-func (f *Finder) getItem(lng float64, lat float64) ([]*tzitem, error) {
-	p := geometry.Point{X: lng, Y: lat}
-
-	// Get candidates within ranges to reduce the search space
-	candidates := f.getItemInRanges(lng, lat)
-	if len(candidates) == 0 {
-		return nil, ErrNoTimezoneFound
-	}
-
-	var ret []*tzitem
-	var mu sync.Mutex // To protect writes to ret slice
-	var wg sync.WaitGroup
-
-	// Process candidates in batches to leverage concurrency without overwhelming the system
-	batchSize := len(candidates) / 4 // Dynamically calculate batch size based on number of candidates
-	if batchSize < 10 {
-		batchSize = 10 // Minimum batch size to ensure concurrency
-	}
-
-	for i := 0; i < len(candidates); i += batchSize {
-		wg.Add(1)
-		go func(start int) {
-			defer wg.Done()
-			end := start + batchSize
-			if end > len(candidates) {
-				end = len(candidates)
-			}
-			for _, item := range candidates[start:end] {
-				if item.ContainsPoint(p) {
-					mu.Lock()
-					ret = append(ret, item)
-					mu.Unlock()
-				}
-			}
-		}(i)
-	}
-
-	wg.Wait() // Wait for all batches to complete
-
-	if len(ret) == 0 {
-		return nil, newNotFoundErr(lng, lat)
-	}
-	return ret, nil
-}
-
-// GetTimezoneName will use alphabet order and return first matched result.
+// GetTimezoneName returns the first matching zone in data order (alphabetical in the released data), or "".
 func (f *Finder) GetTimezoneName(lng float64, lat float64) string {
-	p := geometry.Point{X: lng, Y: lat}
-	for _, item := range f.items {
-		if item.ContainsPoint(p) {
-			return item.name
-		}
+	if item := f.lookup(geometry.Point{X: lng, Y: lat}); item != nil {
+		return item.name
 	}
 	return ""
 }
 
-// IsKoreaTimezone will check if the point is in the timezone of South Korea. (Asia/Seoul)
+// IsKoreaTimezone reports whether the point is in Asia/Seoul.
 func (f *Finder) IsKoreaTimezone(lng float64, lat float64) bool {
-	p := geometry.Point{X: lng, Y: lat}
-	for _, item := range f.items {
-		if item.ContainsPoint(p) {
-			return item.name == "Asia/Seoul"
-		}
-	}
-	return false
+	return f.GetTimezoneName(lng, lat) == "Asia/Seoul"
 }
 
+// Deprecated: use GetTimezoneName.
 func (f *Finder) GetTimezoneName2(lng, lat float64) string {
-	point := geometry.Point{X: lng, Y: lat}
-	candidates := f.getCandidatesByBoundingBox(lng, lat)
-	for _, item := range candidates {
-		if item.ContainsPoint(point) {
-			return item.name
-		}
-
-		// for _, poly := range item.polys {
-		// 	if poly.ContainsPoint(point) {
-		// 		return item.name
-		// 	}
-		// }
-	}
-	return ""
+	return f.GetTimezoneName(lng, lat)
 }
 
 func (f *Finder) GetTimezoneNames(lng float64, lat float64) ([]string, error) {
-	item, err := f.getItem(lng, lat)
-	if err != nil {
-		return nil, err
-	}
-	ret := []string{}
-	for i := 0; i < len(item); i++ {
-		ret = append(ret, item[i].name)
+	p := geometry.Point{X: lng, Y: lat}
+	var ret []string
+	f.tr.Search([2]float64{lng, lat}, [2]float64{lng, lat}, func(_, _ [2]float64, item *tzitem) bool {
+		if item.ContainsPoint(p) {
+			ret = append(ret, item.name)
+		}
+		return true
+	})
+	if len(ret) == 0 {
+		return nil, newNotFoundErr(lng, lat)
 	}
 	slices.Sort(ret)
 	return ret, nil
@@ -371,21 +291,4 @@ func (f *Finder) TimezoneNames() []string {
 
 func (f *Finder) DataVersion() string {
 	return f.version
-}
-
-func (i *tzitem) getBoundingBox() (min, max [2]float64) {
-	return i.min, i.max
-}
-
-// Fast initial candidate selection based on bounding box overlap.
-func (f *Finder) getCandidatesByBoundingBox(lng, lat float64) []*tzitem {
-	candidates := make([]*tzitem, 0)
-	point := [2]float64{lng, lat}
-	for _, item := range f.items {
-		min, max := item.getBoundingBox()
-		if point[0] >= min[0] && point[0] <= max[0] && point[1] >= min[1] && point[1] <= max[1] {
-			candidates = append(candidates, item)
-		}
-	}
-	return candidates
 }

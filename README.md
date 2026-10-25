@@ -116,6 +116,27 @@ func main() {
 }
 ```
 
+### Korea only
+
+`korea.NewFinder()` embeds 20 KB of tzdata 2026e geometry (Asia/Seoul and its
+neighbors, clipped to `korea.Bounds`) instead of the 6.7 MB world data. Inside
+the box it answers like upstream's world finder (checked on 2.4M points by
+`cmd/regiontzpb`); outside it returns `""`.
+
+```go
+f, err := korea.NewFinder()
+inKorea := f.GetTimezoneName(126.9780, 37.5665) == "Asia/Seoul"
+```
+
+Apple M-series, `go test -bench . ./...`:
+
+- Init: 0.9 ms and 1.4 MB allocated (DefaultFinder: 40 ms, 216 MB).
+- Retained heap: 0.2 MB (DefaultFinder: 32 MB).
+- Lookup: 2.5 ns inside the box (a 0.02° cell grid answers 93% of cells), about
+  100-250 ns on borders, 2 ns outside (DefaultFinder: 70-1100 ns).
+
+Regenerate after an upstream data release with `go generate ./korea`.
+
 ## CLI Tool
 
 In addition to using TZF as a library in your Go projects, you can also use the

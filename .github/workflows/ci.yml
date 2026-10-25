@@ -28,7 +28,7 @@ jobs:
     name: golangci-lint
     strategy:
       matrix:
-        go: ["1.21", "1.22"]
+        go: ["1.24", "stable"]
     permissions:
       contents: read
       pull-requests: read
@@ -50,7 +50,7 @@ jobs:
   build:
     strategy:
       matrix:
-        go: ["1.21", "1.22"]
+        go: ["1.24", "stable"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,7 +65,10 @@ jobs:
           make install
 
       - name: Run coverage
-        run: go test -race -coverprofile=coverage.txt -covermode=atomic
+        run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+      - name: Korea data matches upstream
+        run: cd cmd/regiontzpb && go test ./...
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
